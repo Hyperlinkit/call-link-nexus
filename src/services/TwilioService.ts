@@ -1,4 +1,3 @@
-
 // This is a client-side service for interacting with Twilio
 import { Device, Connection } from '@twilio/voice-sdk';
 
@@ -19,6 +18,7 @@ interface TwilioServiceState {
 class TwilioService {
   state: TwilioServiceState;
   onStateChangeCallbacks: ((state: TwilioServiceState) => void)[];
+  backendUrl: string;
 
   constructor() {
     this.state = {
@@ -32,11 +32,45 @@ class TwilioService {
       callerInfo: null,
     };
     this.onStateChangeCallbacks = [];
+    
+    // Default to localhost for development or use current hostname for production
+    const isProduction = import.meta.env.PROD;
+    const host = isProduction ? window.location.hostname : 'localhost';
+    const port = isProduction ? window.location.port : '4000';
+    const protocol = isProduction ? window.location.protocol : 'http:';
+    
+    this.backendUrl = `${protocol}//${host}${port ? ':' + port : ''}`;
   }
 
-  // This method would be called with a token from your backend
-  async setup(token: string) {
+  // Fetch Twilio token from our backend
+  async fetchToken(): Promise<string> {
     try {
+      const response = await fetch(`${this.backendUrl}/api/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ identity: 'user' }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch token');
+      }
+      
+      const data = await response.json();
+      return data.token;
+    } catch (error) {
+      console.error('Error fetching token:', error);
+      throw error;
+    }
+  }
+
+  // This method would be called to initialize Twilio with a token from the backend
+  async setup() {
+    try {
+      // Get token from backend
+      const token = await this.fetchToken();
+      
       // Create a new Device instance
       const device = new Device(token);
       
@@ -118,7 +152,7 @@ class TwilioService {
         throw new Error('Twilio device not ready');
       }
 
-      // In a real app, phoneNumber should be properly formatted
+      // Make call through the device
       const connection = await this.state.device.connect({
         params: {
           To: phoneNumber
@@ -197,6 +231,21 @@ class TwilioService {
   sendDTMF(digit: string) {
     if (this.state.connection && this.state.isOnCall) {
       this.state.connection.sendDigits(digit);
+    }
+  }
+
+  async fetchRecentCalls() {
+    try {
+      const response = await fetch(`${this.backendUrl}/api/calls`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch calls');
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching calls:', error);
+      throw error;
     }
   }
 
