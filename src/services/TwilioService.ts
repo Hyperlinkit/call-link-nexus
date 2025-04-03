@@ -1,10 +1,10 @@
 
 // This is a client-side service for interacting with Twilio
-import { Device } from 'twilio-client';
+import { Device, Connection } from '@twilio/voice-sdk';
 
 interface TwilioServiceState {
   device: Device | null;
-  connection: any;
+  connection: Connection | null;
   isReady: boolean;
   isOnCall: boolean;
   isMuted: boolean;
@@ -37,17 +37,16 @@ class TwilioService {
   // This method would be called with a token from your backend
   async setup(token: string) {
     try {
-      const device = new Device();
-      
-      // Initialize with token
-      await device.setup(token);
+      // Create a new Device instance
+      const device = new Device(token);
       
       // Set up event listeners
-      device.on('ready', () => {
+      device.on('registered', () => {
         this.updateState({
           isReady: true,
           callStatus: 'ready'
         });
+        console.log('Twilio device registered and ready');
       });
 
       device.on('error', (error) => {
@@ -73,6 +72,9 @@ class TwilioService {
         this.setupConnectionListeners(connection);
       });
 
+      // Register the device to receive incoming calls
+      await device.register();
+
       this.updateState({
         device
       });
@@ -82,7 +84,7 @@ class TwilioService {
     }
   }
 
-  private setupConnectionListeners(connection: any) {
+  private setupConnectionListeners(connection: Connection) {
     connection.on('accept', () => {
       this.updateState({
         callStatus: 'in-progress'
@@ -118,7 +120,9 @@ class TwilioService {
 
       // In a real app, phoneNumber should be properly formatted
       const connection = await this.state.device.connect({
-        To: phoneNumber
+        params: {
+          To: phoneNumber
+        }
       });
 
       this.setupConnectionListeners(connection);
